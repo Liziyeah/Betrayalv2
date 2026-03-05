@@ -1,0 +1,88 @@
+Use the existing mobile game UI frames in this project and convert them into a playable prototype using variables and component variants to simulate randomness.
+
+Do not change the visual design. Keep the same dark UI, red gradient accents, rounded cards, and layout already present in the screens.
+
+Create variables to simulate game state.
+
+Variables needed:
+
+playerRole
+
+secretNumber
+
+selectedAction
+
+targetPlayer
+
+The variable playerRole should support the following values:
+Adivino, Ángel, Traidor, Investigador, Diplomático.
+
+The variable secretNumber should support values from 1 to 9.
+
+Use the existing “Tu rol secreto” screen and convert it into a dynamic screen that changes depending on the value of playerRole.
+
+For each role, update the title and description while keeping the same layout.
+
+Role variants:
+
+Adivino
+Title: ADIVINO
+Description: Saca una carta al azar sin mirarla y colócala boca abajo.
+
+Ángel
+Title: ÁNGEL
+Description: Puedes proteger a un jugador para evitar que pierda vida esta ronda.
+
+Traidor
+Title: TRAIDOR
+Description: Cuando traicionas a un jugador, pierde 1 vida adicional.
+
+Investigador
+Title: INVESTIGADOR
+Description: Puedes descubrir el número secreto de otro jugador.
+
+Diplomático
+Title: DIPLOMÁTICO
+Description: Si negocias con otro jugador y ambos negocian, ambos ganan una vida.
+
+The screen must include a “Continuar” button.
+
+When the button is pressed, simulate role assignment by setting playerRole to one of the available role values and navigate to the Secret Number screen.
+
+Use the existing “Tu número secreto” screen and make the number dynamic using the secretNumber variable.
+
+The screen should display text similar to:
+“Tu número esta ronda es: {secretNumber}”.
+
+When the screen loads, simulate randomness by assigning secretNumber a value between 1 and 9.
+
+Include instruction text explaining that the player must keep the number secret and place the corresponding card face down.
+
+Add a “Continuar” button that navigates to the Challenge screen.
+
+After the Challenge screen, add the Action Selection screen.
+
+This screen should show four large action cards:
+Proteger, Traicionar, Investigar, Negociar.
+
+Each action card should include an icon, the action name, and a short description.
+
+When a player taps one of these actions, store the value in the selectedAction variable and navigate to the “Seleccionar jugador” screen.
+
+The “Seleccionar jugador” screen must show a list of players with avatars and allow the player to select a target.
+
+When a player is selected, store the selection in the targetPlayer variable.
+
+Include a “Confirmar acción” button.
+
+After confirming, navigate to the “Esperando jugadores” screen.
+
+The “Esperando jugadores” screen should show player status indicators such as “acción elegida” or “esperando”.
+
+Once all players have submitted actions, navigate to the existing Results screen.
+
+Use the existing Results screen to display player lives, eliminated players, and the outcome of the round.
+
+Add a “Continuar” button that starts the next round and returns to the Secret Number phase.
+
+Use prototype variables and variants to simulate random roles, random numbers, and action selection so the prototype feels interactive even without a real backend.
