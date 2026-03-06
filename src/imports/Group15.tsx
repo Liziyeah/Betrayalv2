@@ -1,10 +1,10 @@
 import clsx from "clsx";
 import svgPaths from "./svg-s7s979e6xr";
-import imgImage18 from "figma:asset/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
-import imgEllipse1 from "figma:asset/5865e9bcdfcfe29026fe89d43fc5d5c3c1d4cff2.png";
-import imgEllipse2 from "figma:asset/1d923b72e9c0b5b00fcfc1d0c94aa693fa24a082.png";
-import imgImage20 from "figma:asset/fb717c26e709b727aeb2124ed86380363e1ea90c.png";
-import imgImage21 from "figma:asset/2f0c94d2a9fc87e59212f9bcdc6c580ae47db33c.png";
+import imgImage18 from "@/assets/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
+import imgEllipse1 from "@/assets/5865e9bcdfcfe29026fe89d43fc5d5c3c1d4cff2.png";
+import imgEllipse2 from "@/assets/1d923b72e9c0b5b00fcfc1d0c94aa693fa24a082.png";
+import imgImage20 from "@/assets/fb717c26e709b727aeb2124ed86380363e1ea90c.png";
+import imgImage21 from "@/assets/2f0c94d2a9fc87e59212f9bcdc6c580ae47db33c.png";
 type Group10HelperProps = {
   additionalClassNames?: string;
 };

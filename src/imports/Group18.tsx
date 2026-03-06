@@ -1,11 +1,11 @@
 import clsx from "clsx";
 import svgPaths from "./svg-mf5h8yagjp";
-import imgEllipse17 from "figma:asset/6195514ac0b10061fd4b6ac12a23c5e549a8fe28.png";
-import imgImage18 from "figma:asset/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
-import imgEllipse16 from "figma:asset/1dbd2102d0c8254f033376d906bcb253828fa6dc.png";
-import imgEllipse20 from "figma:asset/b81cb22382188ea9e4b3045d661d42467cf79ecd.png";
-import imgEllipse18 from "figma:asset/c35f9d82f7e40cd6709c091eee2e7e91421f86d0.png";
-import imgEllipse19 from "figma:asset/5851c5cdb1741accadc89b6923b7c6b2d2186886.png";
+import imgEllipse17 from "@/assets/6195514ac0b10061fd4b6ac12a23c5e549a8fe28.png";
+import imgImage18 from "@/assets/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
+import imgEllipse16 from "@/assets/1dbd2102d0c8254f033376d906bcb253828fa6dc.png";
+import imgEllipse20 from "@/assets/b81cb22382188ea9e4b3045d661d42467cf79ecd.png";
+import imgEllipse18 from "@/assets/c35f9d82f7e40cd6709c091eee2e7e91421f86d0.png";
+import imgEllipse19 from "@/assets/5851c5cdb1741accadc89b6923b7c6b2d2186886.png";
 type HelperProps = {
   additionalClassNames?: string;
 };

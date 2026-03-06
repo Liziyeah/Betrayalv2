@@ -1,7 +1,7 @@
 import clsx from "clsx";
 import svgPaths from "./svg-2yw37djvz1";
-import imgImage2 from "figma:asset/711139ac5a7491f6b838efd7ac85c41db1b8745e.png";
-import imgImage18 from "figma:asset/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
+import imgImage2 from "@/assets/711139ac5a7491f6b838efd7ac85c41db1b8745e.png";
+import imgImage18 from "@/assets/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
 type Group1Props = {
   additionalClassNames?: string;
 };

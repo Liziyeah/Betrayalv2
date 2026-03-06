@@ -1,6 +1,6 @@
 import clsx from "clsx";
 import svgPaths from "./svg-3l6q0t3n6s";
-import imgImage18 from "figma:asset/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
+import imgImage18 from "@/assets/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
 type Group2Props = {
   additionalClassNames?: string;
 };
