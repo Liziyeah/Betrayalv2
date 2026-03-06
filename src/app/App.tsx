@@ -14,8 +14,10 @@ import RoleAngel from "./components/RoleAngel";
 import RoleTraidor from "./components/RoleTraidor";
 import RoleInvestigador from "./components/RoleInvestigador";
 import RoleDiplomatico from "./components/RoleDiplomatico";
+import PlayerRegistration from "./components/PlayerRegistration";
 
 type Screen = 
+  | "registration"
   | "home" 
   | "logged-in-home" 
   | "join-modal" 
@@ -33,8 +35,14 @@ type Screen =
   | "results";
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>("home");
+  const [currentScreen, setCurrentScreen] = useState<Screen>("registration");
   const [gameCode, setGameCode] = useState("000000");
+  const [playerName, setPlayerName] = useState("");
+
+  const handleRegistrationComplete = (name: string) => {
+    setPlayerName(name);
+    setCurrentScreen("home");
+  };
 
   const handleCreateGame = () => {
     setCurrentScreen("waiting-room");
@@ -88,6 +96,12 @@ export default function App() {
   return (
     <div className="relative w-full h-screen bg-gray-900 flex items-center justify-center overflow-hidden">
       <div className="relative w-[158px] h-[348px] bg-white rounded-lg shadow-2xl overflow-hidden">
+        {currentScreen === "registration" && (
+          <div className="relative w-full h-full">
+            <PlayerRegistration onContinue={handleRegistrationComplete} />
+          </div>
+        )}
+
         {currentScreen === "home" && (
           <div className="relative w-full h-full" onClick={(e) => {
             const target = e.target as HTMLElement;
@@ -327,6 +341,12 @@ export default function App() {
       {/* Debug navigation */}
       <div className="absolute bottom-4 left-4 bg-black/80 text-white p-4 rounded-lg text-xs space-y-2 max-h-[90vh] overflow-y-auto z-50">
         <div className="font-bold mb-2">Current: {currentScreen}</div>
+        <button
+          onClick={() => setCurrentScreen("registration")}
+          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
+        >
+          🆕 Player Registration ⭐
+        </button>
         <button
           onClick={() => setCurrentScreen("home")}
           className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
