@@ -1,445 +1,670 @@
-import { useState } from "react";
-import HomeScreen from "../imports/HomeScreen";
-import ConSesionAbierta from "../imports/ConSesionAbierta";
-import JoinGameModal from "../imports/Group11";
-import WaitingRoom from "../imports/Group15";
-import MissionAssignment from "../imports/Group17";
-import ResultsScreen from "../imports/Group18";
+import { useEffect, useMemo, useState } from "react";
+import { io } from "socket.io-client";
+import PlayerRegistration from "./components/PlayerRegistration";
 import SecretNumber from "./components/SecretNumber";
 import ChallengePhase from "./components/ChallengePhase";
-import ActionSelection from "./components/ActionSelection";
+import ActionSelection, { type ActionType } from "./components/ActionSelection";
 import PlayerSelection from "./components/PlayerSelection";
-import RoleAdivino from "./components/RoleAdivino";
-import RoleAngel from "./components/RoleAngel";
-import RoleTraidor from "./components/RoleTraidor";
-import RoleInvestigador from "./components/RoleInvestigador";
-import RoleDiplomatico from "./components/RoleDiplomatico";
-import PlayerRegistration from "./components/PlayerRegistration";
 
-type Screen = 
-  | "registration"
-  | "home" 
-  | "logged-in-home" 
-  | "join-modal" 
-  | "waiting-room" 
-  | "mission-assignment" 
-  | "secret-number"
-  | "role-adivino"
-  | "role-angel"
-  | "role-traidor"
-  | "role-investigador"
-  | "role-diplomatico"
-  | "challenge-phase"
-  | "action-selection"
-  | "player-selection"
-  | "results";
+const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:4000";
+const SESSION_STORAGE_KEY = "betrayal-session-v1";
+const PLAYER_NAME_STORAGE_KEY = "betrayal-player-name-v1";
+
+type Phase = "waiting" | "mission" | "number" | "challenge" | "action" | "results" | "finished";
+
+interface PlayerItem {
+  playerId: string;
+  playerName: string;
+  lives: number;
+  alive: boolean;
+  isHost?: boolean;
+}
+
+interface PendingPlayer {
+  playerId: string;
+  playerName: string;
+}
+
+interface MeState {
+  playerId: string;
+  playerName: string;
+  lives: number;
+  alive: boolean;
+  role: string | null;
+  roleLabel: string | null;
+  mission: string | null;
+  secretNumber: number | null;
+  numberHidden: boolean;
+}
+
+interface ResolutionAction {
+  playerId: string;
+  playerName: string;
+  actionType: string;
+  targetPlayerName: string | null;
+}
+
+interface ResolutionLifeChange {
+  playerId: string;
+  playerName: string;
+  before: number;
+  after: number;
+  gained: number;
+  lost: number;
+  delta: number;
+  eliminated: boolean;
+}
+
+interface ResolutionFinding {
+  targetPlayerName: string;
+  targetNumber: number;
+  targetAction: string;
+}
+
+interface GameSnapshot {
+  gameCode: string;
+  status: string;
+  phase: Phase;
+  round: number;
+  hostPlayerId: string;
+  players: PlayerItem[];
+  canStart: boolean;
+  me: MeState | null;
+  challenge: { challengeId: string; text: string } | null;
+  pendingPlayers: PendingPlayer[];
+  availableTargets: Array<{ playerId: string; playerName: string; lives: number }>;
+  mySubmittedAction: { actionType: ActionType; targetPlayerId: string | null } | null;
+  lastResolution: {
+    roundId: string;
+    challengeText: string;
+    actionReveal: ResolutionAction[];
+    lifeChanges: ResolutionLifeChange[];
+    privateFindings: ResolutionFinding[];
+  } | null;
+  winner: { playerId: string; playerName: string; reason: string; detail: string } | null;
+  config: {
+    targetedActions: ActionType[];
+    minPlayers: number;
+    maxPlayers: number;
+  };
+}
+
+interface Session {
+  gameCode: string;
+  playerId: string;
+}
+
+function readStoredPlayerName() {
+  return localStorage.getItem(PLAYER_NAME_STORAGE_KEY) || "";
+}
+
+function readStoredSession(): Session | null {
+  const raw = localStorage.getItem(SESSION_STORAGE_KEY);
+  if (!raw) return null;
+
+  try {
+    const parsed = JSON.parse(raw) as Session;
+    if (parsed.gameCode && parsed.playerId) {
+      return parsed;
+    }
+  } catch {
+    return null;
+  }
+  return null;
+}
+
+async function apiRequest<T>(path: string, options?: RequestInit): Promise<T> {
+  const response = await fetch(`${API_BASE}${path}`, {
+    ...options,
+    headers: {
+      "Content-Type": "application/json",
+      ...(options?.headers || {}),
+    },
+  });
+
+  const data = await response.json();
+  if (!response.ok) {
+    throw new Error(data?.error || "No se pudo completar la solicitud.");
+  }
+  return data as T;
+}
 
 export default function App() {
-  const [currentScreen, setCurrentScreen] = useState<Screen>("registration");
-  const [gameCode, setGameCode] = useState("000000");
-  const [playerName, setPlayerName] = useState("");
+  const [playerName, setPlayerName] = useState(readStoredPlayerName);
+  const [session, setSession] = useState<Session | null>(readStoredSession);
+  const [snapshot, setSnapshot] = useState<GameSnapshot | null>(null);
+  const [joinCode, setJoinCode] = useState("");
+  const [showJoinForm, setShowJoinForm] = useState(false);
+  const [selectedAction, setSelectedAction] = useState<ActionType | null>(null);
+  const [isBusy, setIsBusy] = useState(false);
+  const [errorMessage, setErrorMessage] = useState("");
 
-  const handleRegistrationComplete = (name: string) => {
-    setPlayerName(name);
-    setCurrentScreen("home");
-  };
+  useEffect(() => {
+    localStorage.setItem(PLAYER_NAME_STORAGE_KEY, playerName);
+  }, [playerName]);
 
-  const handleCreateGame = () => {
-    setCurrentScreen("waiting-room");
-  };
+  useEffect(() => {
+    if (!session) {
+      localStorage.removeItem(SESSION_STORAGE_KEY);
+      setSnapshot(null);
+      return;
+    }
 
-  const handleJoinGame = () => {
-    setCurrentScreen("join-modal");
-  };
+    localStorage.setItem(SESSION_STORAGE_KEY, JSON.stringify(session));
+  }, [session]);
 
-  const handleJoinSubmit = () => {
-    setCurrentScreen("waiting-room");
-  };
+  useEffect(() => {
+    if (!session) return;
 
-  const handleCancelJoin = () => {
-    setCurrentScreen("home");
-  };
+    let cancelled = false;
+    apiRequest<{ snapshot: GameSnapshot }>(
+      `/api/games/${session.gameCode}/state?playerId=${session.playerId}`,
+    )
+      .then((response) => {
+        if (!cancelled) {
+          setSnapshot(response.snapshot);
+        }
+      })
+      .catch((error: Error) => {
+        if (!cancelled) {
+          setErrorMessage(error.message);
+        }
+      });
 
-  const handleStartGame = () => {
-    setCurrentScreen("mission-assignment");
-  };
+    return () => {
+      cancelled = true;
+    };
+  }, [session]);
 
-  const handleContinueToGame = () => {
-    setCurrentScreen("secret-number");
-  };
+  useEffect(() => {
+    if (!session) return;
 
-  const handleContinueToChallenge = () => {
-    setCurrentScreen("challenge-phase");
-  };
+    const socket = io(API_BASE, {
+      transports: ["websocket", "polling"],
+    });
 
-  const handleContinueToActionSelection = () => {
-    setCurrentScreen("action-selection");
-  };
+    socket.on("connect", () => {
+      socket.emit("game:subscribe", {
+        gameCode: session.gameCode,
+        playerId: session.playerId,
+      });
+    });
 
-  const handleConfirmAction = () => {
-    setCurrentScreen("player-selection");
-  };
+    socket.on("game:update", (nextSnapshot: GameSnapshot) => {
+      setSnapshot(nextSnapshot);
+      setErrorMessage("");
+    });
 
-  const handleConfirmPlayerSelection = () => {
-    setCurrentScreen("results");
-  };
+    socket.on("game:error", (payload: { message: string }) => {
+      setErrorMessage(payload?.message || "Error de conexion en tiempo real.");
+    });
 
-  const handleResultsToContinue = () => {
-    // Could go back to waiting room or to a new round
-    setCurrentScreen("secret-number");
-  };
+    return () => {
+      socket.disconnect();
+    };
+  }, [session?.gameCode, session?.playerId]);
 
-  const handlePlay = () => {
-    setCurrentScreen("waiting-room");
-  };
+  useEffect(() => {
+    if (snapshot?.phase !== "action") {
+      setSelectedAction(null);
+    }
+  }, [snapshot?.phase]);
+
+  const needsTarget = useMemo(() => {
+    const targeted = snapshot?.config.targetedActions || [];
+    return (action: ActionType) => targeted.includes(action);
+  }, [snapshot?.config.targetedActions]);
+
+  const myPending = Boolean(
+    snapshot &&
+      session &&
+      snapshot.pendingPlayers.some((pendingPlayer) => pendingPlayer.playerId === session.playerId),
+  );
+
+  async function createGame() {
+    if (!playerName.trim()) return;
+    setIsBusy(true);
+    setErrorMessage("");
+    try {
+      const response = await apiRequest<{
+        gameCode: string;
+        playerId: string;
+        snapshot: GameSnapshot;
+      }>("/api/games", {
+        method: "POST",
+        body: JSON.stringify({ playerName }),
+      });
+      setSession({
+        gameCode: response.gameCode,
+        playerId: response.playerId,
+      });
+      setSnapshot(response.snapshot);
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function joinGame() {
+    const normalizedCode = joinCode.trim().toUpperCase();
+    if (!normalizedCode) return;
+    setIsBusy(true);
+    setErrorMessage("");
+    try {
+      const response = await apiRequest<{
+        gameCode: string;
+        playerId: string;
+        snapshot: GameSnapshot;
+      }>(`/api/games/${normalizedCode}/join`, {
+        method: "POST",
+        body: JSON.stringify({ playerName }),
+      });
+
+      setSession({
+        gameCode: response.gameCode,
+        playerId: response.playerId,
+      });
+      setSnapshot(response.snapshot);
+      setShowJoinForm(false);
+      setJoinCode("");
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function startGame() {
+    if (!session) return;
+    setIsBusy(true);
+    setErrorMessage("");
+    try {
+      const response = await apiRequest<{ snapshot: GameSnapshot }>(
+        `/api/games/${session.gameCode}/start`,
+        {
+          method: "POST",
+          body: JSON.stringify({ playerId: session.playerId }),
+        },
+      );
+      setSnapshot(response.snapshot);
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function sendReady() {
+    if (!session || !snapshot) return;
+    if (!myPending) return;
+
+    setIsBusy(true);
+    setErrorMessage("");
+    try {
+      const response = await apiRequest<{ snapshot: GameSnapshot }>(
+        `/api/games/${session.gameCode}/ready`,
+        {
+          method: "POST",
+          body: JSON.stringify({ playerId: session.playerId }),
+        },
+      );
+      setSnapshot(response.snapshot);
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  async function submitAction(actionType: ActionType, targetPlayerId: string | null) {
+    if (!session) return;
+    setIsBusy(true);
+    setErrorMessage("");
+    try {
+      const response = await apiRequest<{ snapshot: GameSnapshot }>(
+        `/api/games/${session.gameCode}/action`,
+        {
+          method: "POST",
+          body: JSON.stringify({
+            playerId: session.playerId,
+            actionType,
+            targetPlayerId,
+          }),
+        },
+      );
+      setSnapshot(response.snapshot);
+      setSelectedAction(null);
+    } catch (error) {
+      setErrorMessage((error as Error).message);
+    } finally {
+      setIsBusy(false);
+    }
+  }
+
+  function leaveSession() {
+    setSession(null);
+    setSnapshot(null);
+    setJoinCode("");
+    setShowJoinForm(false);
+    setSelectedAction(null);
+    setErrorMessage("");
+  }
+
+  function renderMenu() {
+    return (
+      <div className="relative size-full bg-gradient-to-b from-[#161519] to-[#af0e20] text-white">
+        <div className="absolute inset-x-0 top-[34px] text-center px-3">
+          <p className="text-[10px] font-bold tracking-wide">BETRAYAL</p>
+          <p className="text-[6px] text-[#efe6e5] mt-1">Conectado como {playerName}</p>
+        </div>
+
+        <div className="absolute left-[10px] right-[10px] top-[115px] bg-[#f9eeee] rounded-[12px] p-[10px] text-[#473133]">
+          <p className="text-[8px] font-bold">Selecciona una opcion</p>
+          <p className="text-[5px] mt-1">Crea una nueva partida o unete con codigo.</p>
+
+          <button
+            type="button"
+            onClick={createGame}
+            disabled={isBusy}
+            className="mt-4 w-full h-[24px] rounded-full bg-[#473133] text-[#f9eeee] text-[6px] font-bold disabled:opacity-60"
+          >
+            Crear partida
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setShowJoinForm((value) => !value)}
+            disabled={isBusy}
+            className="mt-2 w-full h-[24px] rounded-full bg-[#af0e20] text-white text-[6px] font-bold disabled:opacity-60"
+          >
+            Unirse a partida
+          </button>
+
+          {showJoinForm && (
+            <div className="mt-3">
+              <input
+                value={joinCode}
+                onChange={(event) => setJoinCode(event.target.value.slice(0, 6))}
+                placeholder="Codigo de 6 caracteres"
+                className="w-full h-[22px] rounded-md border border-[#473133] bg-white px-2 text-[6px] uppercase"
+              />
+              <button
+                type="button"
+                onClick={joinGame}
+                disabled={isBusy || joinCode.trim().length !== 6}
+                className="mt-2 w-full h-[22px] rounded-full bg-[#161519] text-white text-[6px] font-bold disabled:opacity-60"
+              >
+                Confirmar union
+              </button>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderWaitingRoom(currentSnapshot: GameSnapshot) {
+    return (
+      <div className="relative size-full bg-[#161519] text-[#f9eeee]">
+        <div className="absolute inset-x-0 top-[18px] text-center">
+          <p className="text-[9px] font-bold">Sala de espera</p>
+          <p className="text-[6px] text-[#9b9b9b] mt-1">Codigo: {currentSnapshot.gameCode}</p>
+        </div>
+
+        <div className="absolute left-[10px] right-[10px] top-[64px] bottom-[66px] rounded-[10px] bg-[#232028] border border-[#3c3744] p-2 overflow-y-auto">
+          {currentSnapshot.players.map((player) => (
+            <div
+              key={player.playerId}
+              className="h-[20px] mb-1 rounded-[6px] bg-[#2f2a36] px-2 flex items-center justify-between text-[6px]"
+            >
+              <span className="truncate">{player.playerName}</span>
+              <span className="text-[#9b9b9b]">{player.isHost ? "HOST" : "LISTO"}</span>
+            </div>
+          ))}
+        </div>
+
+        <div className="absolute left-[10px] right-[10px] bottom-[12px]">
+          {currentSnapshot.canStart ? (
+            <button
+              type="button"
+              onClick={startGame}
+              disabled={isBusy}
+              className="w-full h-[24px] rounded-full bg-[#af0e20] text-white text-[6px] font-bold disabled:opacity-60"
+            >
+              Empezar partida
+            </button>
+          ) : (
+            <div className="text-[5px] text-center text-[#9b9b9b]">
+              Esperando host o mas jugadores (minimo {currentSnapshot.config.minPlayers}).
+            </div>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderMission(currentSnapshot: GameSnapshot) {
+    return (
+      <div className="relative size-full bg-[#161519] text-[#f9eeee]">
+        <div className="absolute inset-x-0 top-[24px] text-center px-3">
+          <p className="text-[10px] font-bold">Mision secreta</p>
+          <p className="text-[6px] mt-1 text-[#9b9b9b]">Tu rol es:</p>
+          <p className="text-[9px] font-bold text-[#af0e20] mt-1">
+            {currentSnapshot.me?.roleLabel || "Sin rol"}
+          </p>
+        </div>
+
+        <div className="absolute left-[10px] right-[10px] top-[95px] rounded-[10px] bg-[#232028] border border-[#3c3744] p-3">
+          <p className="text-[6px] leading-[8px] text-[#efe6e5]">
+            {currentSnapshot.me?.mission || "Mision no disponible."}
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={sendReady}
+          disabled={isBusy || !myPending}
+          className={`absolute left-[10px] right-[10px] bottom-[14px] h-[24px] rounded-full text-[6px] font-bold ${
+            myPending ? "bg-[#af0e20] text-white" : "bg-[#3a3a3a] text-[#d0d0d0]"
+          }`}
+        >
+          {myPending ? "Continuar" : "Esperando a los demas..."}
+        </button>
+      </div>
+    );
+  }
+
+  function renderResults(currentSnapshot: GameSnapshot) {
+    const resolution = currentSnapshot.lastResolution;
+    const winner = currentSnapshot.winner;
+
+    return (
+      <div className="relative size-full bg-[#161519] text-[#f9eeee]">
+        <div className="absolute inset-x-0 top-[14px] text-center px-2">
+          <p className="text-[9px] font-bold">Resultados de ronda</p>
+          <p className="text-[5px] text-[#9b9b9b] mt-1">
+            Ronda {currentSnapshot.round} - {resolution?.challengeText || "Sin desafio"}
+          </p>
+        </div>
+
+        <div className="absolute left-[8px] right-[8px] top-[44px] bottom-[64px] rounded-[10px] bg-[#232028] border border-[#3c3744] p-2 overflow-y-auto">
+          {resolution?.lifeChanges.map((change) => (
+            <div
+              key={change.playerId}
+              className="mb-1 rounded-[6px] bg-[#2f2a36] p-[4px] text-[5px] leading-[7px]"
+            >
+              <div className="flex justify-between">
+                <span className="truncate">{change.playerName}</span>
+                <span>
+                  {change.before} -&gt; {change.after}
+                </span>
+              </div>
+              <div className="text-[#9b9b9b]">
+                +{change.gained} / -{change.lost}
+                {change.eliminated ? " (eliminado)" : ""}
+              </div>
+            </div>
+          ))}
+
+          {(resolution?.privateFindings || []).length > 0 && (
+            <div className="mt-2 rounded-[6px] bg-[#1f1a24] p-1">
+              <p className="text-[5px] font-bold text-[#af0e20]">Investigacion privada</p>
+              {resolution?.privateFindings.map((finding, index) => (
+                <p key={`${finding.targetPlayerName}-${index}`} className="text-[5px] leading-[7px]">
+                  {finding.targetPlayerName}: numero {finding.targetNumber}, accion{" "}
+                  {finding.targetAction}
+                </p>
+              ))}
+            </div>
+          )}
+        </div>
+
+        <div className="absolute left-[8px] right-[8px] bottom-[10px]">
+          {winner ? (
+            <div className="mb-1 text-center text-[5px] text-[#efe6e5]">
+              Ganador: <span className="text-[#af0e20] font-bold">{winner.playerName}</span> (
+              {winner.detail})
+            </div>
+          ) : null}
+
+          {currentSnapshot.phase === "results" ? (
+            <button
+              type="button"
+              onClick={sendReady}
+              disabled={isBusy || !myPending}
+              className={`w-full h-[24px] rounded-full text-[6px] font-bold ${
+                myPending ? "bg-[#af0e20] text-white" : "bg-[#3a3a3a] text-[#d0d0d0]"
+              }`}
+            >
+              {myPending ? "Continuar" : "Esperando a los demas..."}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={leaveSession}
+              className="w-full h-[24px] rounded-full bg-[#af0e20] text-white text-[6px] font-bold"
+            >
+              Salir de la partida
+            </button>
+          )}
+        </div>
+      </div>
+    );
+  }
+
+  function renderGame() {
+    if (!snapshot) {
+      return (
+        <div className="relative size-full bg-[#161519] text-[#f9eeee] flex items-center justify-center text-[6px]">
+          Cargando estado de la partida...
+        </div>
+      );
+    }
+
+    if (snapshot.phase === "waiting") {
+      return renderWaitingRoom(snapshot);
+    }
+
+    if (snapshot.phase === "mission") {
+      return renderMission(snapshot);
+    }
+
+    if (snapshot.phase === "number") {
+      return (
+        <SecretNumber
+          number={snapshot.me?.secretNumber ?? null}
+          hidden={Boolean(snapshot.me?.numberHidden)}
+          waitingForOthers={!myPending}
+          onContinue={sendReady}
+        />
+      );
+    }
+
+    if (snapshot.phase === "challenge") {
+      return (
+        <ChallengePhase
+          challengeText={snapshot.challenge?.text || "Sin desafio disponible."}
+          waitingForOthers={!myPending}
+          onContinue={sendReady}
+        />
+      );
+    }
+
+    if (snapshot.phase === "action") {
+      if (snapshot.mySubmittedAction) {
+        return (
+          <div className="relative size-full bg-[#161519] text-[#f9eeee] flex flex-col items-center justify-center px-4 text-center">
+            <p className="text-[9px] font-bold">Accion enviada</p>
+            <p className="text-[6px] text-[#9b9b9b] mt-2">
+              Esperando a que todos los jugadores elijan su accion secreta.
+            </p>
+          </div>
+        );
+      }
+
+      if (selectedAction && needsTarget(selectedAction)) {
+        return (
+          <PlayerSelection
+            selectedAction={selectedAction}
+            players={snapshot.availableTargets}
+            disabled={isBusy}
+            onConfirm={(targetPlayerId) => submitAction(selectedAction, targetPlayerId)}
+          />
+        );
+      }
+
+      return (
+        <ActionSelection
+          disabled={isBusy}
+          initialAction={selectedAction}
+          onConfirm={(actionType) => {
+            if (needsTarget(actionType)) {
+              setSelectedAction(actionType);
+              return;
+            }
+            submitAction(actionType, null);
+          }}
+        />
+      );
+    }
+
+    return renderResults(snapshot);
+  }
 
   return (
     <div className="relative w-full h-screen bg-gray-900 flex items-center justify-center overflow-hidden">
       <div className="relative w-[158px] h-[348px] bg-white rounded-lg shadow-2xl overflow-hidden">
-        {currentScreen === "registration" && (
-          <div className="relative w-full h-full">
-            <PlayerRegistration onContinue={handleRegistrationComplete} />
-          </div>
-        )}
-
-        {currentScreen === "home" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Crear partida" button
-            if (target.closest('[data-name="Container"]') && 
-                target.textContent?.includes("Crear partida")) {
-              handleCreateGame();
-            }
-            
-            // Check if clicked on "Unirse" button
-            if (target.closest('[data-name="Container"]') && 
-                target.textContent?.includes("Unirse") &&
-                !target.textContent?.includes("Crear")) {
-              handleJoinGame();
-            }
-          }}>
-            <HomeScreen />
-          </div>
-        )}
-
-        {currentScreen === "logged-in-home" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Jugar" button
-            if (target.closest('[data-name="Container"]') && 
-                target.textContent?.includes("Jugar")) {
-              handlePlay();
-            }
-          }}>
-            <ConSesionAbierta />
-          </div>
-        )}
-
-        {currentScreen === "join-modal" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Unirse" button
-            if (target.closest('[data-name="Button"]') && 
-                target.textContent?.includes("Unirse") &&
-                !target.textContent?.includes("partida")) {
-              handleJoinSubmit();
-            }
-            
-            // Check if clicked on "Cancelar" button
-            if (target.closest('[data-name="Button"]') && 
-                target.textContent?.includes("Cancelar")) {
-              handleCancelJoin();
-            }
-
-            // Handle textbox click for code input
-            if (target.closest('[data-name="Textbox"]')) {
-              const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
-              setGameCode(randomCode);
-            }
-
-            // Handle "Pegar" button
-            if (target.textContent?.includes("Pegar")) {
-              const randomCode = Math.floor(100000 + Math.random() * 900000).toString();
-              setGameCode(randomCode);
-            }
-          }}>
-            <JoinGameModal />
-          </div>
-        )}
-
-        {currentScreen === "waiting-room" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Empezar partida" button
-            if (target.textContent?.includes("Empezar partida")) {
-              handleStartGame();
-            }
-          }}>
-            <WaitingRoom />
-          </div>
-        )}
-
-        {currentScreen === "mission-assignment" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleContinueToGame();
-            }
-          }}>
-            <MissionAssignment />
-          </div>
-        )}
-
-        {currentScreen === "secret-number" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleContinueToChallenge();
-            }
-          }}>
-            <SecretNumber />
-          </div>
-        )}
-
-        {currentScreen === "role-adivino" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleContinueToChallenge();
-            }
-          }}>
-            <RoleAdivino />
-          </div>
-        )}
-
-        {currentScreen === "role-angel" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleContinueToChallenge();
-            }
-          }}>
-            <RoleAngel />
-          </div>
-        )}
-
-        {currentScreen === "role-traidor" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleContinueToChallenge();
-            }
-          }}>
-            <RoleTraidor />
-          </div>
-        )}
-
-        {currentScreen === "role-investigador" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleContinueToChallenge();
-            }
-          }}>
-            <RoleInvestigador />
-          </div>
-        )}
-
-        {currentScreen === "role-diplomatico" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleContinueToChallenge();
-            }
-          }}>
-            <RoleDiplomatico />
-          </div>
-        )}
-
-        {currentScreen === "challenge-phase" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleContinueToActionSelection();
-            }
-          }}>
-            <ChallengePhase />
-          </div>
-        )}
-
-        {currentScreen === "action-selection" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Confirmar acción" button
-            if (target.textContent?.includes("Confirmar acción") && 
-                target.closest('[data-name="Container"]')) {
-              handleConfirmAction();
-            }
-          }}>
-            <ActionSelection />
-          </div>
-        )}
-
-        {currentScreen === "player-selection" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Confirmar acción" button
-            if (target.textContent?.includes("Confirmar acción") && 
-                target.closest('[data-name="Container"]')) {
-              handleConfirmPlayerSelection();
-            }
-          }}>
-            <PlayerSelection />
-          </div>
-        )}
-
-        {currentScreen === "results" && (
-          <div className="relative w-full h-full" onClick={(e) => {
-            const target = e.target as HTMLElement;
-            
-            // Check if clicked on "Continuar" button
-            if (target.textContent?.includes("Continuar") && 
-                target.closest('[data-name="Container"]')) {
-              handleResultsToContinue();
-            }
-          }}>
-            <ResultsScreen />
-          </div>
+        {!playerName ? (
+          <PlayerRegistration onContinue={setPlayerName} />
+        ) : !session ? (
+          renderMenu()
+        ) : (
+          renderGame()
         )}
       </div>
 
-      {/* Debug navigation */}
-      <div className="absolute bottom-4 left-4 bg-black/80 text-white p-4 rounded-lg text-xs space-y-2 max-h-[90vh] overflow-y-auto z-50">
-        <div className="font-bold mb-2">Current: {currentScreen}</div>
-        <button
-          onClick={() => setCurrentScreen("registration")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          🆕 Player Registration ⭐
-        </button>
-        <button
-          onClick={() => setCurrentScreen("home")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Home Screen
-        </button>
-        <button
-          onClick={() => setCurrentScreen("logged-in-home")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Logged In Home
-        </button>
-        <button
-          onClick={() => setCurrentScreen("join-modal")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Join Modal
-        </button>
-        <button
-          onClick={() => setCurrentScreen("waiting-room")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Waiting Room
-        </button>
-        <button
-          onClick={() => setCurrentScreen("mission-assignment")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Mission Assignment
-        </button>
-        <div className="text-[10px] text-gray-500 mt-2 mb-1 font-bold">ROLES:</div>
-        <button
-          onClick={() => setCurrentScreen("secret-number")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Secret Number (Normal) ⭐
-        </button>
-        <button
-          onClick={() => setCurrentScreen("role-adivino")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          🔮 Adivino
-        </button>
-        <button
-          onClick={() => setCurrentScreen("role-angel")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          👼 Ángel
-        </button>
-        <button
-          onClick={() => setCurrentScreen("role-traidor")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          🗡️ Traidor
-        </button>
-        <button
-          onClick={() => setCurrentScreen("role-investigador")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          🔍 Investigador
-        </button>
-        <button
-          onClick={() => setCurrentScreen("role-diplomatico")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          🤝 Diplomático
-        </button>
-        <div className="text-[10px] text-gray-500 mt-2 mb-1 font-bold">GAMEPLAY:</div>
-        <button
-          onClick={() => setCurrentScreen("challenge-phase")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Challenge Phase ⭐
-        </button>
-        <button
-          onClick={() => setCurrentScreen("action-selection")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Action Selection ⭐
-        </button>
-        <button
-          onClick={() => setCurrentScreen("player-selection")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Player Selection ⭐
-        </button>
-        <button
-          onClick={() => setCurrentScreen("results")}
-          className="block w-full text-left px-2 py-1 hover:bg-white/10 rounded"
-        >
-          Results Screen 🏆
-        </button>
-      </div>
+      {(errorMessage || session) && (
+        <div className="absolute left-2 bottom-2 bg-black/80 text-white p-2 rounded text-[10px] w-[280px]">
+          {session ? (
+            <p>
+              Partida: {session.gameCode} | Jugador: {playerName}
+            </p>
+          ) : (
+            <p>Jugador: {playerName}</p>
+          )}
+          {errorMessage ? <p className="text-[#ff8e8e] mt-1">{errorMessage}</p> : null}
+          {session ? (
+            <button
+              type="button"
+              onClick={leaveSession}
+              className="mt-1 text-[10px] underline text-[#f4c5ca]"
+            >
+              Salir de la partida
+            </button>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }
