@@ -1,4 +1,5 @@
 import http from "node:http";
+import os from "node:os";
 import cors from "cors";
 import express from "express";
 import { Server } from "socket.io";
@@ -15,6 +16,7 @@ import {
 } from "./gameEngine.js";
 
 const PORT = Number(process.env.PORT || 4000);
+const HOST = process.env.HOST || "0.0.0.0";
 
 const app = express();
 app.use(cors());
@@ -27,12 +29,38 @@ const io = new Server(httpServer, {
   },
 });
 
+httpServer.on("error", (error) => {
+  if (error?.code === "EADDRINUSE") {
+    console.error(
+      `Port ${PORT} is already in use. Close the previous server process or run with another PORT.`,
+    );
+    process.exit(1);
+  }
+
+  throw error;
+});
+
 function gameRoom(gameCode) {
   return `game:${gameCode}`;
 }
 
 function playerRoom(playerId) {
   return `player:${playerId}`;
+}
+
+function getLanUrls(port) {
+  const interfaces = os.networkInterfaces();
+  const lanUrls = [];
+
+  for (const entries of Object.values(interfaces)) {
+    for (const details of entries || []) {
+      if (details.family === "IPv4" && !details.internal) {
+        lanUrls.push(`http://${details.address}:${port}`);
+      }
+    }
+  }
+
+  return lanUrls;
 }
 
 function pushGameUpdate(gameCode) {
@@ -156,6 +184,14 @@ io.on("connection", (socket) => {
   });
 });
 
-httpServer.listen(PORT, () => {
+httpServer.listen(PORT, HOST, () => {
   console.log(`Betrayal server listening on http://localhost:${PORT}`);
+
+  const lanUrls = getLanUrls(PORT);
+  if (lanUrls.length > 0) {
+    console.log("LAN URLs:");
+    for (const url of lanUrls) {
+      console.log(`- ${url}`);
+    }
+  }
 });

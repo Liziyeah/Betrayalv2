@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import imgImage18 from "@/assets/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
 
-export type ActionType = "proteger" | "traicionar" | "investigar" | "negociar";
+export type ActionType = "proteger" | "traicionar" | "investigar" | "negociar" | "acusar";
 
 interface ActionSelectionProps {
   disabled?: boolean;
@@ -38,6 +38,12 @@ const ACTIONS: Array<{
     name: "Negociar",
     icon: "N",
     description: "Si ambos negocian entre si, ambos ganan vida.",
+  },
+  {
+    id: "acusar",
+    name: "Acusar",
+    icon: "A",
+    description: "Elige jugador y numero. Si aciertas, ganas beneficio.",
   },
 ];
 

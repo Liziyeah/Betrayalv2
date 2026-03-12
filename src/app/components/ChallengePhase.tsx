@@ -2,12 +2,17 @@ import imgImage18 from "@/assets/9437d7a9f3f9d0942bf1c8000c1c43f3c764ce5b.png";
 
 interface ChallengePhaseProps {
   challengeText: string;
+  roundEvent?: {
+    title: string;
+    text: string;
+  } | null;
   waitingForOthers?: boolean;
   onContinue: () => void;
 }
 
 export default function ChallengePhase({
   challengeText,
+  roundEvent = null,
   waitingForOthers = false,
   onContinue,
 }: ChallengePhaseProps) {
@@ -46,11 +51,18 @@ export default function ChallengePhase({
           </div>
         </div>
 
-        <p className="absolute font-['Lufga:Medium',sans-serif] leading-[8.5px] left-[9.77px] text-[#efe6e5] text-[6.2px] text-center top-[200px] w-[138px]">
+        {roundEvent && (
+          <div className="absolute left-[9.77px] top-[192px] w-[138px] rounded-[8px] bg-[#2a2430] border border-[#3d3548] p-[4px]">
+            <p className="text-[5.2px] font-bold text-[#af0e20]">Evento: {roundEvent.title}</p>
+            <p className="text-[4.8px] leading-[6px] text-[#c8becd] mt-[1px]">{roundEvent.text}</p>
+          </div>
+        )}
+
+        <p className="absolute font-['Lufga:Medium',sans-serif] leading-[8.5px] left-[9.77px] text-[#efe6e5] text-[6.2px] text-center top-[228px] w-[138px]">
           Tienen 2 minutos para hablar, negociar o mentir.
         </p>
 
-        <p className="absolute font-['Inter:Regular',sans-serif] font-normal leading-[7px] left-[9.77px] not-italic text-[#9b9b9b] text-[4.8px] text-center top-[218px] w-[138px]">
+        <p className="absolute font-['Inter:Regular',sans-serif] font-normal leading-[7px] left-[9.77px] not-italic text-[#9b9b9b] text-[4.8px] text-center top-[246px] w-[138px]">
           {waitingForOthers
             ? "Esperando a que todos terminen esta fase..."
             : "Luego deberas elegir tu accion secreta."}

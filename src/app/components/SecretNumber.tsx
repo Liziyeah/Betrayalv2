@@ -51,7 +51,7 @@ export default function SecretNumber({
         <p className="absolute font-['Lufga:Medium',sans-serif] leading-[8.091px] left-[9.77px] text-[#efe6e5] text-[5.993px] text-center top-[192px] w-[138px]">
           {hidden
             ? "Como Adivino debes tomar una carta al azar sin verla."
-            : "Coloca la carta correspondiente boca abajo frente a ti."}
+            : "Puedes tomar cualquier carta fisica para bluffear o negociar."}
         </p>
 
         <p className="absolute font-['Inter:Regular',sans-serif] font-normal leading-[7.5px] left-[9.77px] not-italic text-[#9b9b9b] text-[5.2px] text-center top-[212px] w-[138px]">

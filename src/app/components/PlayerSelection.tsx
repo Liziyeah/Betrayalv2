@@ -12,7 +12,7 @@ interface PlayerSelectionProps {
   selectedAction: ActionType;
   players: SelectablePlayer[];
   disabled?: boolean;
-  onConfirm: (targetPlayerId: string) => void;
+  onConfirm: (targetPlayerId: string, guessedNumber?: number) => void;
 }
 
 const ACTION_INSTRUCTIONS: Record<ActionType, string> = {
@@ -20,6 +20,7 @@ const ACTION_INSTRUCTIONS: Record<ActionType, string> = {
   traicionar: "Selecciona a quien deseas traicionar.",
   investigar: "Selecciona a quien deseas investigar.",
   negociar: "Selecciona con quien deseas negociar.",
+  acusar: "Selecciona a quien acusas y el numero que crees.",
 };
 
 const ACTION_LABELS: Record<ActionType, string> = {
@@ -27,6 +28,7 @@ const ACTION_LABELS: Record<ActionType, string> = {
   traicionar: "T",
   investigar: "I",
   negociar: "N",
+  acusar: "A",
 };
 
 export default function PlayerSelection({
@@ -36,9 +38,11 @@ export default function PlayerSelection({
   onConfirm,
 }: PlayerSelectionProps) {
   const [selectedPlayerId, setSelectedPlayerId] = useState<string | null>(null);
+  const [guessedNumber, setGuessedNumber] = useState(5);
 
   useEffect(() => {
     setSelectedPlayerId(null);
+    setGuessedNumber(5);
   }, [selectedAction, players.length]);
 
   return (
@@ -111,9 +115,34 @@ export default function PlayerSelection({
           )}
         </div>
 
+        {selectedAction === "acusar" && (
+          <div className="absolute left-[9.77px] top-[258px] w-[138px] h-[20px] rounded-[8px] bg-[#2a2430] border border-[#3a3342] flex items-center justify-between px-2">
+            <span className="text-[5.2px] text-[#9b9b9b]">Numero que acusas</span>
+            <div className="flex items-center gap-2">
+              <button
+                type="button"
+                disabled={disabled || guessedNumber <= 1}
+                onClick={() => setGuessedNumber((value) => Math.max(1, value - 1))}
+                className="text-[9px] text-white disabled:opacity-40"
+              >
+                -
+              </button>
+              <span className="text-[7px] text-white font-bold w-[10px] text-center">{guessedNumber}</span>
+              <button
+                type="button"
+                disabled={disabled || guessedNumber >= 10}
+                onClick={() => setGuessedNumber((value) => Math.min(10, value + 1))}
+                className="text-[9px] text-white disabled:opacity-40"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        )}
+
         <button
           type="button"
-          onClick={() => selectedPlayerId && onConfirm(selectedPlayerId)}
+          onClick={() => selectedPlayerId && onConfirm(selectedPlayerId, guessedNumber)}
           disabled={!selectedPlayerId || disabled || players.length === 0}
           className={`absolute h-[25.93px] left-[9.77px] rounded-[599.298px] top-[282px] w-[138px] transition-all ${
             selectedPlayerId && !disabled && players.length > 0

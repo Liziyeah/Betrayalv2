@@ -6,7 +6,22 @@ import ChallengePhase from "./components/ChallengePhase";
 import ActionSelection, { type ActionType } from "./components/ActionSelection";
 import PlayerSelection from "./components/PlayerSelection";
 
-const API_BASE = (import.meta.env.VITE_API_URL as string | undefined) || "http://localhost:4000";
+function resolveApiBase() {
+  const configured = (import.meta.env.VITE_API_URL as string | undefined)?.trim();
+  if (configured) {
+    return configured.replace(/\/+$/, "");
+  }
+
+  if (typeof window !== "undefined") {
+    const protocol = window.location.protocol === "https:" ? "https:" : "http:";
+    const hostname = window.location.hostname || "localhost";
+    return `${protocol}//${hostname}:4000`;
+  }
+
+  return "http://localhost:4000";
+}
+
+const API_BASE = resolveApiBase();
 const SESSION_STORAGE_KEY = "betrayal-session-v1";
 const PLAYER_NAME_STORAGE_KEY = "betrayal-player-name-v1";
 
@@ -61,6 +76,18 @@ interface ResolutionFinding {
   targetAction: string;
 }
 
+interface RoundEventInfo {
+  id: string;
+  title: string;
+  text: string;
+}
+
+interface FinalAward {
+  title: string;
+  playerNames: string[];
+  value: number;
+}
+
 interface GameSnapshot {
   gameCode: string;
   status: string;
@@ -71,21 +98,39 @@ interface GameSnapshot {
   canStart: boolean;
   me: MeState | null;
   challenge: { challengeId: string; text: string } | null;
+  roundEvent: RoundEventInfo | null;
   pendingPlayers: PendingPlayer[];
   availableTargets: Array<{ playerId: string; playerName: string; lives: number }>;
-  mySubmittedAction: { actionType: ActionType; targetPlayerId: string | null } | null;
+  mySubmittedAction: {
+    actionType: ActionType;
+    targetPlayerId: string | null;
+    guessedNumber?: number | null;
+  } | null;
   lastResolution: {
     roundId: string;
     challengeText: string;
+    roundEvent: RoundEventInfo | null;
     actionReveal: ResolutionAction[];
     lifeChanges: ResolutionLifeChange[];
     privateFindings: ResolutionFinding[];
+    resolutionLog: string[];
+    accusationResults: Array<{
+      playerName: string;
+      targetPlayerName: string;
+      guessedNumber: number;
+      actualNumber: number;
+      hit: boolean;
+    }>;
   } | null;
   winner: { playerId: string; playerName: string; reason: string; detail: string } | null;
+  finalAwards: FinalAward[] | null;
   config: {
     targetedActions: ActionType[];
     minPlayers: number;
     maxPlayers: number;
+    initialLives: number;
+    maxLives: number;
+    maxDamagePerRound: number;
   };
 }
 
@@ -317,7 +362,11 @@ export default function App() {
     }
   }
 
-  async function submitAction(actionType: ActionType, targetPlayerId: string | null) {
+  async function submitAction(
+    actionType: ActionType,
+    targetPlayerId: string | null,
+    guessedNumber?: number,
+  ) {
     if (!session) return;
     setIsBusy(true);
     setErrorMessage("");
@@ -330,6 +379,7 @@ export default function App() {
             playerId: session.playerId,
             actionType,
             targetPlayerId,
+            guessedNumber: guessedNumber ?? null,
           }),
         },
       );
@@ -478,6 +528,7 @@ export default function App() {
   function renderResults(currentSnapshot: GameSnapshot) {
     const resolution = currentSnapshot.lastResolution;
     const winner = currentSnapshot.winner;
+    const awards = currentSnapshot.finalAwards || [];
 
     return (
       <div className="relative size-full bg-[#161519] text-[#f9eeee]">
@@ -486,6 +537,11 @@ export default function App() {
           <p className="text-[5px] text-[#9b9b9b] mt-1">
             Ronda {currentSnapshot.round} - {resolution?.challengeText || "Sin desafio"}
           </p>
+          {resolution?.roundEvent ? (
+            <p className="text-[5px] text-[#d9c0c8] mt-[2px]">
+              Evento: {resolution.roundEvent.title}
+            </p>
+          ) : null}
         </div>
 
         <div className="absolute left-[8px] right-[8px] top-[44px] bottom-[64px] rounded-[10px] bg-[#232028] border border-[#3c3744] p-2 overflow-y-auto">
@@ -514,6 +570,40 @@ export default function App() {
                 <p key={`${finding.targetPlayerName}-${index}`} className="text-[5px] leading-[7px]">
                   {finding.targetPlayerName}: numero {finding.targetNumber}, accion{" "}
                   {finding.targetAction}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {(resolution?.accusationResults || []).length > 0 && (
+            <div className="mt-2 rounded-[6px] bg-[#1f1a24] p-1">
+              <p className="text-[5px] font-bold text-[#af0e20]">Acusaciones</p>
+              {resolution?.accusationResults.map((item, index) => (
+                <p key={`${item.playerName}-${index}`} className="text-[5px] leading-[7px]">
+                  {item.playerName} dijo {item.guessedNumber} a {item.targetPlayerName}:{" "}
+                  {item.hit ? "ACIERTO" : "FALLO"}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {(resolution?.resolutionLog || []).length > 0 && (
+            <div className="mt-2 rounded-[6px] bg-[#1f1a24] p-1">
+              <p className="text-[5px] font-bold text-[#af0e20]">Orden de resolucion</p>
+              {resolution?.resolutionLog.map((line, index) => (
+                <p key={`log-${index}`} className="text-[5px] leading-[7px]">
+                  {index + 1}. {line}
+                </p>
+              ))}
+            </div>
+          )}
+
+          {currentSnapshot.phase === "finished" && awards.length > 0 && (
+            <div className="mt-2 rounded-[6px] bg-[#1f1a24] p-1">
+              <p className="text-[5px] font-bold text-[#af0e20]">Titulos finales</p>
+              {awards.map((award) => (
+                <p key={award.title} className="text-[5px] leading-[7px]">
+                  {award.title}: {award.playerNames.join(", ")}
                 </p>
               ))}
             </div>
@@ -585,6 +675,7 @@ export default function App() {
       return (
         <ChallengePhase
           challengeText={snapshot.challenge?.text || "Sin desafio disponible."}
+          roundEvent={snapshot.roundEvent}
           waitingForOthers={!myPending}
           onContinue={sendReady}
         />
@@ -609,7 +700,9 @@ export default function App() {
             selectedAction={selectedAction}
             players={snapshot.availableTargets}
             disabled={isBusy}
-            onConfirm={(targetPlayerId) => submitAction(selectedAction, targetPlayerId)}
+            onConfirm={(targetPlayerId, guessedNumber) =>
+              submitAction(selectedAction, targetPlayerId, guessedNumber)
+            }
           />
         );
       }
